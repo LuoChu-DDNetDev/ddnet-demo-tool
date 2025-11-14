@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDNet Demo Parser</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 DDNet Demo File Parser</h1>
+            <p>Parse and analyze DDNet demo files (.demo)</p>
+        </header>
+
+        <section class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <h2>Drop demo files here or click to browse</h2>
+                <p>Supports multiple files</p>
+                <input type="file" id="fileInput" accept=".demo" multiple hidden>
+            </div>
+            <button id="clearButton" class="clear-button" style="display: none;">Clear All Results</button>
+        </section>
+
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <h2>Parsed Demo Files</h2>
+            <div id="results"></div>
+        </section>
+
+        <footer>
+            <p>DDNet Demo Parser - Supports DDNet demo file format</p>
+        </footer>
+    </div>
+
+    <script src="demo-parser.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
