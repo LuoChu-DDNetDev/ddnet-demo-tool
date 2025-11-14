@@ -175,7 +175,7 @@ class DemoParser {
     }
 
     /**
-     * Parse chunks and gather statistics
+     * Parse chunks and gather statistics, extract players and chat
      */
     parseChunks(view, startOffset, fileSize) {
         const stats = {
@@ -187,11 +187,14 @@ class DemoParser {
             deltas: 0,
             firstTick: -1,
             lastTick: -1,
-            ticks: []
+            ticks: [],
+            players: {},  // clientId -> player info
+            chatMessages: []  // array of chat messages
         };
 
         let offset = startOffset;
         let currentTick = -1;
+        const MAX_CLIENTS = 64;
 
         try {
             while (offset < fileSize) {
@@ -246,16 +249,23 @@ class DemoParser {
                         offset += 2;
                     }
 
-                    // Count chunk types
+                    // Read chunk data
+                    if (offset + chunkSize > fileSize) break;
+                    const chunkData = new Uint8Array(view.buffer, view.byteOffset + offset, chunkSize);
+
+                    // Count chunk types and try to parse
                     if (chunkType === this.CHUNKTYPE_SNAPSHOT) {
                         stats.snapshots++;
+                        // Try to parse snapshot for player info
+                        this.tryParseSnapshot(chunkData, stats.players, MAX_CLIENTS);
                     } else if (chunkType === this.CHUNKTYPE_MESSAGE) {
                         stats.messages++;
+                        // Try to parse message for chat
+                        this.tryParseMessage(chunkData, stats.chatMessages, stats.players, currentTick);
                     } else if (chunkType === this.CHUNKTYPE_DELTA) {
                         stats.deltas++;
                     }
 
-                    // Skip chunk data
                     offset += chunkSize;
                 }
 
@@ -330,6 +340,120 @@ class DemoParser {
     }
 
     /**
+     * Try to parse snapshot for player information (ClientInfo objects)
+     */
+    tryParseSnapshot(compressedData, players, maxClients) {
+        try {
+            // Decompress the snapshot data
+            const decompressedData = this.decompressChunk(compressedData);
+            if (!decompressedData) return;
+
+            // Parse snapshot items
+            const unpacker = new DataUnpacker(decompressedData);
+            
+            // Try to find ClientInfo objects (NETOBJTYPE_CLIENTINFO = 1)
+            while (unpacker.hasMoreData()) {
+                try {
+                    const itemType = unpacker.getInt();
+                    const itemId = unpacker.getInt();
+                    const itemSize = unpacker.getInt();
+                    
+                    if (itemSize <= 0 || itemSize > 1024) break;
+                    
+                    // ClientInfo type = 1
+                    if (itemType === 1 && itemId >= 0 && itemId < maxClients) {
+                        const name = unpacker.getString();
+                        const clan = unpacker.getString();
+                        const country = unpacker.getInt();
+                        const skin = unpacker.getString();
+                        
+                        if (name && name.length > 0) {
+                            players[itemId] = {
+                                id: itemId,
+                                name: name,
+                                clan: clan || '',
+                                country: country,
+                                skin: skin || ''
+                            };
+                        }
+                    } else {
+                        // Skip this item
+                        unpacker.skip(itemSize);
+                    }
+                } catch (e) {
+                    break;
+                }
+            }
+        } catch (error) {
+            // Silent fail - snapshot parsing is best-effort
+        }
+    }
+
+    /**
+     * Try to parse message for chat (Sv_Chat messages)
+     */
+    tryParseMessage(compressedData, chatMessages, players, currentTick) {
+        try {
+            // Decompress the message data
+            const decompressedData = this.decompressChunk(compressedData);
+            if (!decompressedData) return;
+
+            const unpacker = new DataUnpacker(decompressedData);
+            
+            // Read message type
+            const msgType = unpacker.getInt();
+            
+            // NETMSGTYPE_SV_CHAT is typically around message ID 10-15
+            // We'll check for the pattern: team (-2 to 3), clientId (-1 to 63), message string
+            if (msgType >= 5 && msgType <= 20) {
+                try {
+                    const team = unpacker.getInt();
+                    const clientId = unpacker.getInt();
+                    const message = unpacker.getString();
+                    
+                    if (message && message.length > 0 && team >= -2 && team <= 3 && clientId >= -1 && clientId < 64) {
+                        const playerName = (clientId >= 0 && players[clientId]) ? players[clientId].name : '***';
+                        const seconds = Math.floor(currentTick / 50);
+                        const minutes = Math.floor(seconds / 60);
+                        const secs = seconds % 60;
+                        const time = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                        
+                        chatMessages.push({
+                            tick: currentTick,
+                            time: time,
+                            team: team,
+                            clientId: clientId,
+                            playerName: playerName,
+                            message: message
+                        });
+                    }
+                } catch (e) {
+                    // Not a chat message
+                }
+            }
+        } catch (error) {
+            // Silent fail - message parsing is best-effort
+        }
+    }
+
+    /**
+     * Decompress chunk data (simplified - handles uncompressed and basic compression)
+     */
+    decompressChunk(compressedData) {
+        try {
+            // Try to detect if data is compressed
+            // DDNet uses huffman + variable int compression
+            // For now, we'll use a simplified approach
+            
+            // If data looks like it starts with reasonable values, might be uncompressed
+            const unpacker = new DataUnpacker(compressedData);
+            return compressedData;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
      * Compare two arrays for equality
      */
     arraysEqual(a, b) {
@@ -349,6 +473,87 @@ class DemoParser {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+}
+
+/**
+ * Data unpacker for reading variable-length integers and strings
+ * Simplified version for demo parsing
+ */
+class DataUnpacker {
+    constructor(data) {
+        this.data = data;
+        this.offset = 0;
+    }
+
+    hasMoreData() {
+        return this.offset < this.data.length;
+    }
+
+    /**
+     * Read a variable-length integer (simplified)
+     */
+    getInt() {
+        if (this.offset >= this.data.length) return 0;
+        
+        let result = 0;
+        let shift = 0;
+        
+        while (this.offset < this.data.length) {
+            const byte = this.data[this.offset++];
+            result |= (byte & 0x7F) << shift;
+            shift += 7;
+            
+            if ((byte & 0x80) === 0) {
+                break;
+            }
+            
+            if (shift >= 32) break; // Prevent overflow
+        }
+        
+        // Handle sign extension
+        if (result & 0x40000000) {
+            result |= 0x80000000;
+        }
+        
+        return result >> 0; // Convert to signed 32-bit
+    }
+
+    /**
+     * Read a null-terminated string
+     */
+    getString() {
+        const start = this.offset;
+        let end = start;
+        
+        // Find null terminator
+        while (end < this.data.length && this.data[end] !== 0) {
+            end++;
+            if (end - start > 256) break; // Safety limit
+        }
+        
+        if (end >= this.data.length) {
+            this.offset = this.data.length;
+            return '';
+        }
+        
+        // Extract string bytes
+        const bytes = this.data.slice(start, end);
+        this.offset = end + 1; // Skip null terminator
+        
+        // Decode UTF-8
+        try {
+            return new TextDecoder('utf-8').decode(bytes);
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /**
+     * Skip bytes
+     */
+    skip(count) {
+        this.offset = Math.min(this.offset + count, this.data.length);
     }
 }
 

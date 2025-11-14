@@ -296,9 +296,79 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
+        // Players information
+        const playerCount = Object.keys(result.statistics.players || {}).length;
+        if (playerCount > 0) {
+            html += `
+                <div class="info-card" style="border-left-color: #2196F3;">
+                    <h3 style="color: #2196F3;">👥 Players (${playerCount})</h3>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        ${Object.values(result.statistics.players).map(player => `
+                            <div class="info-item">
+                                <span class="info-label">${player.id}:</span>
+                                <span class="info-value">${escapeHtml(player.name)}${player.clan ? ' [' + escapeHtml(player.clan) + ']' : ''}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Chat messages
+        const chatCount = (result.statistics.chatMessages || []).length;
+        if (chatCount > 0) {
+            html += `
+                <div class="chat-messages">
+                    <h3>💬 Chat Messages (${chatCount})</h3>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        ${result.statistics.chatMessages.slice(0, 100).map(msg => `
+                            <div class="message">
+                                <span class="message-time">[${msg.time}]</span>
+                                <span class="message-player">${escapeHtml(msg.playerName)}:</span>
+                                <span class="message-text">${escapeHtml(msg.message)}</span>
+                            </div>
+                        `).join('')}
+                        ${chatCount > 100 ? `<div class="info-item"><em>Showing first 100 of ${chatCount} messages</em></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // JSON Export button
+        html += `
+            <div style="margin-top: 20px; text-align: center;">
+                <button class="export-button" onclick="exportDemoJSON('${escapeHtml(result.filename)}')">
+                    📥 Export as JSON
+                </button>
+            </div>
+        `;
+
         resultDiv.innerHTML = html;
         resultsContainer.appendChild(resultDiv);
+        
+        // Store result for export
+        window.demoResults = window.demoResults || {};
+        window.demoResults[result.filename] = result;
     }
+
+    /**
+     * Export demo data as JSON
+     */
+    window.exportDemoJSON = function(filename) {
+        const result = window.demoResults[filename];
+        if (!result) return;
+
+        const jsonStr = JSON.stringify(result, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename.replace('.demo', '') + '_parsed.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
 
     /**
      * Escape HTML to prevent XSS
