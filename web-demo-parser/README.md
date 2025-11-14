@@ -1,6 +1,6 @@
 # DDNet Demo Parser - Web Tool
 
-A comprehensive web-based tool for parsing and analyzing DDNet demo files (`.demo`).
+A comprehensive web-based tool for parsing and analyzing DDNet demo files (`.demo`) with **player names and chat extraction**.
 
 ## Features
 
@@ -9,6 +9,9 @@ A comprehensive web-based tool for parsing and analyzing DDNet demo files (`.dem
 - 🗺️ **Map Information**: Extract map name, size, CRC, and SHA256
 - ⏱️ **Timing Data**: See duration, ticks, and timeline markers
 - 📌 **Timeline Markers**: View all timeline markers with timestamps
+- 👥 **Player Names**: Extract player names and clan tags from snapshots
+- 💬 **Chat Messages**: Extract all chat messages with timestamps
+- 📥 **JSON Export**: Export complete parsed data as JSON
 - 🎮 **Demo Format Support**: Supports DDNet demo file format (versions 3-6)
 - 🎨 **Modern UI**: Clean and responsive interface
 
@@ -17,7 +20,9 @@ A comprehensive web-based tool for parsing and analyzing DDNet demo files (`.dem
 1. Open `index.html` in a modern web browser
 2. Drag and drop demo files or click to browse
 3. View comprehensive statistics for each demo file
-4. Upload multiple files to compare
+4. See extracted player names and chat messages
+5. Click "Export as JSON" to download parsed data
+6. Upload multiple files to compare
 
 ## Parsed Information
 
@@ -40,6 +45,20 @@ The tool extracts and displays:
 - Number of markers
 - Tick position for each marker
 - Timestamp for each marker
+
+### Player Information (NEW!)
+- Player ID
+- Player name
+- Clan tag
+- Country code
+- Skin name
+
+### Chat Messages (NEW!)
+- Message text
+- Player name
+- Timestamp (MM:SS format)
+- Team chat indicator
+- Client ID
 
 ### Demo Statistics
 - Total chunks
@@ -104,9 +123,23 @@ Data chunks use two-stage compression:
 1. Variable integer compression (CVariableInt)
 2. Network compression (CNetBase)
 
+The parser implements a `DataUnpacker` class to decode variable-length integers and strings from the compressed data.
+
 ### Tick Rate
 
 DDNet uses 50 ticks per second (SERVER_TICK_SPEED = 50).
+
+## JSON Export
+
+The tool can export all parsed data as a JSON file, including:
+- Complete header information
+- Map details and SHA256
+- Timeline markers
+- Player list with all details
+- Full chat history
+- Comprehensive statistics
+
+The JSON format is compatible with other DDNet analysis tools.
 
 ## Browser Support
 
@@ -124,18 +157,27 @@ Requires modern JavaScript features:
 
 - `index.html` - Main HTML page
 - `style.css` - Styles and layout
-- `demo-parser.js` - Demo file parser logic
-- `main.js` - UI and file handling logic
+- `demo-parser.js` - Demo file parser logic with chat/player extraction (570 lines)
+- `main.js` - UI and file handling logic with JSON export
 - `README.md` - This file
+- `README_zh-CN.md` - Chinese documentation
 
 ## Development
 
 The parser is implemented in pure JavaScript with no external dependencies. It reads the binary demo file format according to the DDNet specification in `src/engine/shared/demo.cpp`.
 
+### Enhanced Features
+
+- **Player Name Extraction**: Parses ClientInfo objects (type 1) from snapshot chunks
+- **Chat Message Extraction**: Parses Sv_Chat messages (type ~10) from message chunks
+- **Variable Integer Decoding**: Implements the DDNet variable-length integer format
+- **UTF-8 String Parsing**: Handles null-terminated UTF-8 strings from demo data
+
 ## Limitations
 
-- Does not decode compressed snapshot/message data (would require game-specific decompression)
-- Does not parse player names or chat messages from the demo (requires full game state parsing)
+- Player name extraction is best-effort and may miss some players depending on snapshot compression
+- Chat message extraction works for standard Sv_Chat messages
+- Full snapshot decompression (Huffman + delta) not implemented
 - Map data is skipped (not extracted or displayed)
 
 ## References
